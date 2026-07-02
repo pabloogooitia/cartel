@@ -78,7 +78,9 @@ body{
 .plbl input{position:absolute;opacity:0;width:0;height:0;}
 .pcard{border:3px solid transparent;background:white;transition:border-color .12s,transform .12s;}
 .pcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#aaa;}
-.pcard .pnom{font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;line-height:1.3;padding:4px 5px 5px;min-height:28px;}
+.pcard .pnom{font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;line-height:1.3;padding:4px 5px 3px;min-height:28px;}
+.pcard .psess{font-family:'ABCOracle',sans-serif;font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 5px 5px;color:#888;}
+.plbl input:checked+.pcard .psess{background:#111;color:#aaa;}
 .plbl input:checked+.pcard{border-color:#111;transform:translateY(-2px);}
 .plbl input:checked+.pcard .pnom{background:#111;color:white;}
 .ptick{display:none;position:absolute;top:5px;right:5px;width:16px;height:16px;background:#111;border-radius:50%;align-items:center;justify-content:center;}
@@ -338,7 +340,7 @@ body{
       <button class="btn-s" onclick="selTodas()">Todas</button>
       <button class="btn-s" onclick="deselTodas()">Limpiar</button>
       <button class="btn-p" id="btn-gen" disabled onclick="genCartel()">Generar cartel</button>
-      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.0</span>
+      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.1</span>
       <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:8px;">Desarrollado por Pablo Goitia</span>
     </div>
   </div>
@@ -521,9 +523,10 @@ async function arrancar() {
   const fs = new Set();
   todas.forEach(p => p.dias.forEach(d => fs.add(d.nombre)));
   fechas = [...fs].sort(cmpFecha);
-  // Inicializar calendario con rango completo por defecto
-  calIni = fechas[0];
-  calFin = fechas[fechas.length - 1];
+  // Inicializar calendario: viernes más próximo → jueves siguiente
+  // Si hoy es vie/sáb/dom/lun/mar/mié/jue → buscamos el viernes más cercano (puede ser hoy si es vie)
+  calIni = rangoSemanaDefecto(fechas) || fechas[0];
+  calFin = rangoSemanaDefecto(fechas, true) || fechas[fechas.length - 1];
   calStep = 0;
   actualizarLabel();
   document.getElementById('carga').style.display = 'none';
@@ -600,7 +603,27 @@ function parsear(html) {
   return res;
 }
 
-// ── Calendario ──
+// ── Rango predeterminado: próximo viernes → jueves siguiente ──
+// Devuelve el nombre de fecha (de `fechas`) que corresponde al viernes/jueves buscado.
+// Si fin=false → busca el viernes; si fin=true → busca el jueves 6 días después.
+function rangoSemanaDefecto(fechas, fin = false) {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const dow = hoy.getDay(); // 0=dom, 1=lun … 5=vie, 6=sáb
+  // Días hasta el próximo viernes (0 si hoy ya es viernes)
+  const diasHastaVie = (5 - dow + 7) % 7;
+  const vie = new Date(hoy);
+  vie.setDate(hoy.getDate() + diasHastaVie);
+  const target = new Date(vie);
+  if (fin) target.setDate(vie.getDate() + 6); // jueves = vie + 6
+  // Buscar en fechas[] la que coincide con ese día
+  return fechas.find(f => {
+    const d = fechaToDate(f);
+    return d && d.getTime() === target.getTime();
+  }) || null;
+}
+
+
 let calIni = null, calFin = null, calMes = null, calAnyo = null, calStep = 0;
 
 const MESES_CAL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -736,6 +759,15 @@ document.addEventListener('click', e => {
 });
 
 // ── Grid selección ──
+function contarSesiones(p, r) {
+  let total = 0;
+  p.dias.forEach(d => {
+    if (!r.includes(d.nombre)) return;
+    d.horas.forEach(h => { if (/^\d{1,2}:\d{2}$/.test(h)) total++; });
+  });
+  return total;
+}
+
 function refGrid() {
   const r = getRango();
   enRango = todas.filter(p => p.dias.some(d => r.includes(d.nombre)));
@@ -743,11 +775,13 @@ function refGrid() {
     const ch = sel.includes(p.titulo);
     const dis = !ch && sel.length >= 12;
     const te = p.titulo.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const ns = contarSesiones(p, r);
     return `<label class="plbl">
       <input type="checkbox" ${ch?'checked':''} ${dis?'disabled':''} onchange="onCh(this,'${te}')">
       <span class="pcard">
         <img src="${p.poster}" alt="${p.titulo}" loading="lazy">
         <span class="pnom">${p.titulo}</span>
+        <span class="psess">${ns} sesión${ns !== 1 ? 'es' : ''}</span>
       </span>
       <span class="ptick"><svg viewBox="0 0 8 8" fill="none" stroke="white" stroke-width="2"><polyline points="1,4 3,6.5 7,1.5"/></svg></span>
     </label>`;
