@@ -76,13 +76,15 @@ body{
 .gminis{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:7px;}
 .plbl{cursor:pointer;position:relative;display:block;user-select:none;}
 .plbl input{position:absolute;opacity:0;width:0;height:0;}
-.pcard{border:3px solid transparent;background:white;transition:border-color .12s,transform .12s;}
-.pcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#aaa;}
-.pcard .pnom{font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;line-height:1.3;padding:4px 5px 3px;min-height:28px;}
-.pcard .psess{font-family:'ABCOracle',sans-serif;font-size:8px;font-weight:700;letter-spacing:.5px;padding:2px 5px 5px;color:#888;}
-.plbl input:checked+.pcard .psess{background:#111;color:#aaa;}
+.pcard{border:3px solid transparent;background:white;transition:border-color .12s,transform .12s;display:flex;flex-direction:column;}
+.pcard img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;background:#aaa;flex-shrink:0;}
+.pcard .pinfo{padding:4px 5px 5px;display:flex;flex-direction:column;gap:3px;flex:1;}
+.pcard .pnom{font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;line-height:1.3;}
+.pcard .psess{font-family:'ABCOracle',sans-serif;font-size:8px;font-weight:700;letter-spacing:.5px;color:#888;white-space:nowrap;}
 .plbl input:checked+.pcard{border-color:#111;transform:translateY(-2px);}
-.plbl input:checked+.pcard .pnom{background:#111;color:white;}
+.plbl input:checked+.pcard .pinfo{background:#111;}
+.plbl input:checked+.pcard .pnom{color:white;}
+.plbl input:checked+.pcard .psess{color:#aaa;}
 .ptick{display:none;position:absolute;top:5px;right:5px;width:16px;height:16px;background:#111;border-radius:50%;align-items:center;justify-content:center;}
 .ptick svg{width:8px;height:8px;}
 .plbl input:checked~.ptick{display:flex;}
@@ -340,7 +342,7 @@ body{
       <button class="btn-s" onclick="selTodas()">Todas</button>
       <button class="btn-s" onclick="deselTodas()">Limpiar</button>
       <button class="btn-p" id="btn-gen" disabled onclick="genCartel()">Generar cartel</button>
-      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.1</span>
+      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.2</span>
       <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:8px;">Desarrollado por Pablo Goitia</span>
     </div>
   </div>
@@ -780,8 +782,10 @@ function refGrid() {
       <input type="checkbox" ${ch?'checked':''} ${dis?'disabled':''} onchange="onCh(this,'${te}')">
       <span class="pcard">
         <img src="${p.poster}" alt="${p.titulo}" loading="lazy">
-        <span class="pnom">${p.titulo}</span>
-        <span class="psess">${ns} sesión${ns !== 1 ? 'es' : ''}</span>
+        <span class="pinfo">
+          <span class="pnom">${p.titulo}</span>
+          <span class="psess">${ns} sesión${ns !== 1 ? 'es' : ''}</span>
+        </span>
       </span>
       <span class="ptick"><svg viewBox="0 0 8 8" fill="none" stroke="white" stroke-width="2"><polyline points="1,4 3,6.5 7,1.5"/></svg></span>
     </label>`;
