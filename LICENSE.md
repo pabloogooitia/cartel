@@ -1,6 +1,6 @@
 # LICENSE — Babel Cartelera Generator
 
-**Copyright (c) 2026 Pablo Goitia Martinez · Cines Babel, Valencia (ES)**
+**Copyright (c) 2026 Pablo Goitia Martinez**
 
 ---
 
