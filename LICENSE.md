@@ -15,7 +15,7 @@ Se concede permiso gratuito y no exclusivo para usar, copiar, modificar y distri
 Cualquier uso en un contexto comercial —incluyendo, sin limitación, el uso por parte de empresas, organizaciones con fines lucrativos, o integración en productos o servicios de pago— **requiere autorización previa y expresa del autor**.
 
 Para solicitar una licencia comercial, contacta en:
-**→ [tu-email@cinebabel.es]**
+**→ [pgoitiamartinez@gmail.com]**
 
 ### 3. Modificaciones y obras derivadas
 
