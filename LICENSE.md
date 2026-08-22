@@ -1,4 +1,4 @@
-# LICENSE — Cartelera Generator
+# LICENSE — Generador de cartelera semanal
 
 **Copyright (c) 2026 Pablo Goitia Martinez**
 
@@ -40,7 +40,7 @@ Este software se proporciona **tal cual**, sin garantías de ningún tipo, expre
 
 ## Sobre esta herramienta
 
-**Cartelera Generator** es una herramienta interna desarrollada para automatizar la generación de carteles de programación semanal. Extrae sesiones vía proxy Cloudflare Worker y exporta un PDF listo para imprimir (95×145 cm).
+**Generador de cartelera semanal** es una herramienta interna desarrollada para automatizar la generación de carteles de programación semanal. Extrae sesiones y exporta un PDF listo para imprimir (95×145 cm).
 
 ---
 
