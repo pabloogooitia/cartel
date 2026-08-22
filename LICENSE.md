@@ -40,7 +40,7 @@ Este software se proporciona **tal cual**, sin garantías de ningún tipo, expre
 
 ## Sobre esta herramienta
 
-**Generador de cartelera semanal** es una herramienta interna desarrollada para automatizar la generación de carteles de programación semanal. Extrae sesiones y exporta un PDF listo para imprimir (95×145 cm).
+**Generador de cartelera semanal** es una herramienta desarrollada para automatizar la generación de carteles de programación semanal. Extrae sesiones y exporta un PDF listo para imprimir (95×145 cm).
 
 ---
 
