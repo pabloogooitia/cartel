@@ -229,6 +229,13 @@ body{
   white-space:nowrap;overflow:hidden;
 }
 
+/* ── Películas con 5 columnas (matinal + 4 sesiones) ──
+   Se aprieta el gap y se reduce la tipografía de las horas para que
+   las 5 columnas quepan en el mismo ancho sin recortar "22:35". */
+.horarios-wrap.cols-5 .h-col-dias{width:272px;min-width:272px;}
+.horarios-wrap.cols-5 .h-gap{width:34px;min-width:34px;}
+.horarios-wrap.cols-5 .h-cel{font-size:52px;}
+
 /* Footer — logo Babel */
 .footer{
   margin-top:258px;margin-left:-72px;width:3591px;
@@ -345,7 +352,7 @@ body{
       <button class="btn-s" onclick="selTodas()">Todas</button>
       <button class="btn-s" onclick="deselTodas()">Limpiar</button>
       <button class="btn-p" id="btn-gen" disabled onclick="genCartel()">Generar cartel</button>
-      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.6</span>
+      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.7</span>
       <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:8px;">Desarrollado por Pablo Goitia</span>
     </div>
   </div>
@@ -822,37 +829,56 @@ function titleFs(t) {
 }
 
 // ── Asignación de horas a columnas por sesión ──
-// Col 0: 1ª sesión  (< 18:00)
-// Col 1: 2ª sesión  (18:00 – 19:59)
-// Col 2: 3ª sesión  (20:00 – 20:59)
-// Col 3: 4ª sesión  (≥ 21:00, o cualquier sesión desplazada por overflow)
-// Regla especial: la sesión más tardía del día con hora ≥ 21:00 siempre va a col 3.
+// El número de columnas es variable por película (4 por defecto, 5 si algún
+// día tiene matinal además de las 4 sesiones habituales).
+//
+// 4 columnas:  <18:00 | 18:00–19:59 | 20:00–20:59 | ≥21:00
+// 5 columnas:  <14:00 | 14:00–17:59 | 18:00–19:59 | 20:00–20:59 | ≥21:00
+//
+// El último umbral actúa de ancla: la sesión más tardía siempre cae en la
+// última columna. El resto se desplaza a la derecha si su columna está ocupada.
+const MAX_COLS_H = 5;
+
+// Umbrales (en minutos) que separan cada columna, según nº de columnas
+const UMBRALES_COLS = {
+  4: [18 * 60, 20 * 60, 21 * 60],
+  5: [14 * 60, 18 * 60, 20 * 60, 21 * 60]
+};
+
 function horaAMinutos(h) {
   const [hh, mm] = h.split(':').map(Number);
   return hh * 60 + mm;
 }
-function asignarColumnas(horas) {
-  const validas = horas
+
+function horasValidas(horas) {
+  return (horas || [])
     .filter(h => /^\d{1,2}:\d{2}$/.test(h))
     .map(h => ({ h, min: horaAMinutos(h) }))
     .sort((a, b) => a.min - b.min);
+}
 
-  if (!validas.length) return ['', '', '', ''];
+// Nº de columnas que necesita una película: 4 salvo que algún día
+// del rango tenga 5 o más sesiones (matinal incluida).
+function colsNecesarias(dias) {
+  const max = dias.reduce((m, d) => Math.max(m, horasValidas(d.horas).length), 0);
+  return Math.min(Math.max(max, 4), MAX_COLS_H);
+}
 
-  const cols = ['', '', '', ''];
-  const ultimaMin = validas[validas.length - 1].min;
+function asignarColumnas(horas, nCols = 4) {
+  const n = Math.min(Math.max(nCols, 4), MAX_COLS_H);
+  const cols = Array(n).fill('');
+  const umbrales = UMBRALES_COLS[n] || UMBRALES_COLS[4];
+  const validas = horasValidas(horas);
+  if (!validas.length) return cols;
 
-  validas.forEach(({ h, min }, idx) => {
-    const esUltima = idx === validas.length - 1;
-    let c;
-    if (min < 18 * 60)      c = 0;
-    else if (min < 20 * 60) c = 1;
-    else if (min < 21 * 60) c = 2;
-    else                    c = 3; // ≥ 21:00 → siempre col 3 (última sesión)
+  validas.forEach(({ h, min }) => {
+    // Columna natural: primer umbral que la hora no supera
+    let c = umbrales.findIndex(u => min < u);
+    if (c === -1) c = n - 1; // por encima del último umbral → última columna
 
-    // Si la col está ocupada, avanza a la derecha
-    while (c < 4 && cols[c] !== '') c++;
-    if (c < 4) cols[c] = h;
+    // Si la columna está ocupada, avanza a la derecha
+    while (c < n && cols[c] !== '') c++;
+    if (c < n) cols[c] = h;
   });
   return cols;
 }
@@ -869,16 +895,17 @@ function genCartel() {
     if (!dr.length) return;
     const fs = titleFs(p.titulo);
     const TOTAL_FILAS = 7;
-    const N_COLS_H = 4;
+    const N_COLS_H = colsNecesarias(dr);
+    // Precalcular la rejilla de horas por día (evita recalcular por columna)
+    const rejilla = dr.map(d => asignarColumnas(d.horas, N_COLS_H));
     const colDias = Array.from({length: TOTAL_FILAS}, (_, i) => {
       const d = dr[i];
       return `<div class="h-row h-dia">${d ? d.nombre : ''}</div>`;
     }).join('');
     const colsHoras = Array.from({length: N_COLS_H}, (_, ci) => {
       const celdas = Array.from({length: TOTAL_FILAS}, (_, ri) => {
-        const d = dr[ri];
-        const h = d ? asignarColumnas(d.horas)[ci] : '';
-        return `<div class="h-cel">${h}</div>`;
+        const h = rejilla[ri] ? rejilla[ri][ci] : '';
+        return `<div class="h-cel">${h || ''}</div>`;
       }).join('');
       return `<div class="h-col-h">${celdas}</div>`;
     }).join('');
@@ -890,7 +917,7 @@ function genCartel() {
       </div>
       <div class="film-info">
         <div class="film-title" style="font-size:${fs}px">${p.titulo}</div>
-        <div class="horarios-wrap">
+        <div class="horarios-wrap${N_COLS_H >= 5 ? ' cols-5' : ''}">
           <div class="h-col-dias">${colDias}</div>
           <div class="h-gap"></div>
           <div class="h-col-horas">${colsHoras}</div>
