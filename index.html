@@ -245,10 +245,13 @@ body{
 /* ── Películas con 6 columnas (matinal + 5 sesiones, o dobles pases) ──
    Mismo ancho de días que en cols-5 (272px, medido seguro para "V. 18 Sep"
    a 62px) y gap mínimo, para dejar el máximo de espacio a las 6 columnas:
-   1161 - 272 - 16 = 873px → 145px por columna. "22:45" a 44px ≈ 110px. */
+   1161 - 272 - 16 = 873px → 145px por columna.
+   "HH:MM" en ABCOracle mide ≈3,03 × font-size. A 44px ocupaba 133px de los
+   145 (91%) y las horas se tocaban. A 37px ocupa 112px (77%), dejando unos
+   16px de aire a cada lado. En impresión 37px ≈ 9,8mm de cuerpo. */
 .horarios-wrap.cols-6 .h-col-dias{width:272px;min-width:272px;}
 .horarios-wrap.cols-6 .h-gap{width:16px;min-width:16px;}
-.horarios-wrap.cols-6 .h-cel{font-size:44px;}
+.horarios-wrap.cols-6 .h-cel{font-size:37px;}
 
 /* Footer — logo Babel */
 .footer{
@@ -366,7 +369,7 @@ body{
       <button class="btn-s" onclick="selTodas()">Todas</button>
       <button class="btn-s" onclick="deselTodas()">Limpiar</button>
       <button class="btn-p" id="btn-gen" disabled onclick="genCartel()">Generar cartel</button>
-      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.10</span>
+      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.11</span>
       <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:8px;">Desarrollado por Pablo Goitia</span>
     </div>
   </div>
