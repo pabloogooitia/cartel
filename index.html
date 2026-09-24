@@ -243,8 +243,10 @@ body{
 .horarios-wrap.cols-5 .h-cel{font-size:52px;}
 
 /* ── Películas con 6 columnas (matinal + 5 sesiones, o dobles pases) ──
-   La columna de días se deja intacta (290px, medida segura para "V. 18 Sep");
-   solo se aprieta el gap y baja la tipografía de las horas. */
+   Mismo ancho de días que en cols-5 (272px, medido seguro para "V. 18 Sep"
+   a 62px) y gap mínimo, para dejar el máximo de espacio a las 6 columnas:
+   1161 - 272 - 16 = 873px → 145px por columna. "22:45" a 44px ≈ 110px. */
+.horarios-wrap.cols-6 .h-col-dias{width:272px;min-width:272px;}
 .horarios-wrap.cols-6 .h-gap{width:16px;min-width:16px;}
 .horarios-wrap.cols-6 .h-cel{font-size:44px;}
 
@@ -364,7 +366,7 @@ body{
       <button class="btn-s" onclick="selTodas()">Todas</button>
       <button class="btn-s" onclick="deselTodas()">Limpiar</button>
       <button class="btn-p" id="btn-gen" disabled onclick="genCartel()">Generar cartel</button>
-      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.9</span>
+      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.10</span>
       <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:8px;">Desarrollado por Pablo Goitia</span>
     </div>
   </div>
@@ -462,38 +464,72 @@ function normalizarDia(raw) {
   return abrev + ' ' + m[2];
 }
 
+// ── Lectura de horas de una fila de .tabla-sesiones ──
+// La web agrupa en una misma celda las sesiones que caen en la misma franja
+// (p. ej. "22:00" y "22:10", o "20:00" y "20:45"). Por eso NO basta con leer
+// el primer <a> de cada celda: hay que recoger TODAS las horas de la fila.
+// Devuelve una lista plana y ordenada; el reparto en columnas lo hace después
+// asignarColumnas(), que ya sabe cuántas columnas necesita cada película.
+const RE_HORA = /\b(\d{1,2}):(\d{2})\b/g;
+
+function extraerHorasFila(celdas) {
+  const horas = [];
+  const vistas = new Set();
+  for (let i = 1; i < celdas.length; i++) {
+    const c = celdas[i];
+    if (!c) continue;
+    const enlaces = [...c.querySelectorAll('a')];
+    const trozos = enlaces.length ? enlaces.map(a => a.textContent) : [c.textContent];
+    trozos.forEach(txt => {
+      RE_HORA.lastIndex = 0;
+      let m;
+      while ((m = RE_HORA.exec(txt)) !== null) {
+        const hh = parseInt(m[1], 10), mm = parseInt(m[2], 10);
+        if (hh > 23 || mm > 59) continue;
+        const norm = m[1].padStart(2, '0') + ':' + m[2];
+        if (vistas.has(norm)) continue;
+        vistas.add(norm);
+        horas.push(norm);
+      }
+    });
+  }
+  return horas.sort((a, b) => horaAMinutos(a) - horaAMinutos(b));
+}
+
+function leerTablaSesiones(tabla) {
+  const dias = [];
+  tabla.querySelectorAll('tr').forEach(fila => {
+    const celdas = [...fila.querySelectorAll('td')];
+    if (!celdas.length) return;
+    const raw = celdas[0].textContent.trim();
+    if (!raw) return;
+    dias.push({ nombre: normalizarDia(raw), horas: extraerHorasFila(celdas) });
+  });
+  return dias;
+}
+
 // ── Parser de ficha individual ──
 // Misma estructura .tabla-sesiones que la cartelera, reutilizamos la misma lógica
 function parsearFicha(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const tabla = doc.querySelector('.tabla-sesiones');
   if (!tabla) return [];
-  const filas = tabla.querySelectorAll('tr');
-  let maxCols = 0;
-  filas.forEach(f => { const c = f.querySelectorAll('td').length; if (c > maxCols) maxCols = c; });
-  const numH = Math.max(0, maxCols - 1);
-  const dias = [];
-  filas.forEach(fila => {
-    const celdas = [...fila.querySelectorAll('td')];
-    if (!celdas.length) return;
-    const raw = celdas[0].textContent.trim();
-    if (!raw) return;
-    const nombre = normalizarDia(raw);
-    const horas = [];
-    for (let i = 1; i <= numH; i++) {
-      const c = celdas[i];
-      if (!c) { horas.push(''); continue; }
-      const t = (c.querySelector('a') || c).textContent.trim();
-      horas.push(/^\d{1,2}:\d{2}$/.test(t) ? t : '');
-    }
-    dias.push({nombre, horas});
-  });
-  return dias;
+  return leerTablaSesiones(tabla);
 }
 
+// Al fusionar, si un día ya existe nos quedamos con la versión que traiga
+// MÁS sesiones: así una tabla recortada nunca pisa a una completa.
 function fusionarDias(pelicula, diasNuevos) {
-  const existentes = new Set(pelicula.dias.map(d => d.nombre));
-  diasNuevos.forEach(d => { if (!existentes.has(d.nombre)) pelicula.dias.push(d); });
+  const indice = new Map(pelicula.dias.map((d, i) => [d.nombre, i]));
+  diasNuevos.forEach(d => {
+    if (!indice.has(d.nombre)) {
+      indice.set(d.nombre, pelicula.dias.length);
+      pelicula.dias.push(d);
+    } else {
+      const prev = pelicula.dias[indice.get(d.nombre)];
+      if (d.horas.length > prev.horas.length) prev.horas = d.horas;
+    }
+  });
 }
 
 // ── Arranque ──
@@ -583,26 +619,7 @@ function parsear(html) {
     // Sesiones
     const tabla = bloque.querySelector('.tabla-sesiones');
     if (!tabla) return;
-    const filas = tabla.querySelectorAll('tr');
-    let maxCols = 0;
-    filas.forEach(f => { const c = f.querySelectorAll('td').length; if (c > maxCols) maxCols = c; });
-    const numH = Math.max(0, maxCols - 1);
-    const dias = [];
-    filas.forEach(fila => {
-      const celdas = [...fila.querySelectorAll('td')];
-      if (!celdas.length) return;
-      const raw = celdas[0].textContent.trim();
-      if (!raw) return;
-      const nombre = normalizarDia(raw);
-      const horas = [];
-      for (let i = 1; i <= numH; i++) {
-        const c = celdas[i];
-        if (!c) { horas.push(''); continue; }
-        const t = (c.querySelector('a') || c).textContent.trim();
-        horas.push(/^\d{1,2}:\d{2}$/.test(t) ? t : '');
-      }
-      dias.push({nombre, horas});
-    });
+    const dias = leerTablaSesiones(tabla);
     // URL de la ficha individual — enlace "Ver ficha" en pelicula-actions
     let fichaUrl = '';
     const acciones = bloque.querySelector('.pelicula-actions');
@@ -614,8 +631,7 @@ function parsear(html) {
     if (!dias.length) return;
     if (mapa.has(titulo)) {
       const existing = mapa.get(titulo);
-      const nombresExistentes = new Set(existing.dias.map(d => d.nombre));
-      dias.forEach(d => { if (!nombresExistentes.has(d.nombre)) existing.dias.push(d); });
+      fusionarDias(existing, dias);
       if (!existing.poster && poster) existing.poster = poster;
       if (!existing.fichaUrl && fichaUrl) existing.fichaUrl = fichaUrl;
     } else {
