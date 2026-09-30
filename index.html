@@ -97,6 +97,17 @@ body{
 .ptick svg{width:8px;height:8px;}
 .plbl input:checked~.ptick{display:flex;}
 
+/* Aviso de fichas no cargadas — la portada de cinesbabel solo publica 7 días,
+   así que una ficha caída significa sesiones que faltarán en el cartel. */
+#aviso-fichas{display:none;margin-top:10px;padding:9px 12px;border:2px solid #111;background:#ffe9a8;
+  font-family:'ABCOracle',sans-serif;font-size:12px;line-height:1.45;color:#111;}
+#aviso-fichas b{font-weight:400;border-bottom:1px solid #111;}
+#aviso-fichas .av-t{display:block;margin-bottom:2px;letter-spacing:.5px;text-transform:uppercase;font-size:10px;}
+#aviso-fichas button{margin-left:8px;font-family:'ABCOracle',sans-serif;font-size:11px;padding:3px 9px;
+  border:1px solid #111;background:#fff;cursor:pointer;}
+.pcard.incompleta .pinfo{background:#ffe9a8;}
+.pwarn{font-family:'ABCOracle',sans-serif;font-size:10px;color:#8a5b00;display:block;margin-top:1px;}
+
 /* ─── BARRA CARTEL ─── */
 #barra-cartel{display:none;background:white;border-bottom:2px solid #111;padding:10px 20px;position:sticky;top:0;z-index:100;gap:10px;align-items:center;}
 
@@ -369,10 +380,11 @@ body{
       <button class="btn-s" onclick="selTodas()">Todas</button>
       <button class="btn-s" onclick="deselTodas()">Limpiar</button>
       <button class="btn-p" id="btn-gen" disabled onclick="genCartel()">Generar cartel</button>
-      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.11</span>
+      <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:4px;">v2.12</span>
       <span style="font-family:'ABCOracle',sans-serif;font-size:9px;font-weight:300;letter-spacing:1px;color:#bbb;padding-bottom:9px;padding-left:8px;">Desarrollado por Pablo Goitia</span>
     </div>
   </div>
+  <div id="aviso-fichas" role="alert"></div>
 </div>
 
 <!-- PANEL SELECCIÓN -->
@@ -443,7 +455,7 @@ body{
 
 <script>
 const WORKER = 'https://worker.pgoitiamartinez.workers.dev/';
-let todas=[], fechas=[], sel=[], enRango=[];
+let todas=[], fechas=[], sel=[], enRango=[], fallosFicha=[];
 
 // ── Normalización de días ──
 // cinesbabel.com devuelve: "Mar 23 Jun", "Mié 24 Jun", "Jue 25 Jun"…
@@ -511,6 +523,16 @@ function leerTablaSesiones(tabla) {
   return dias;
 }
 
+// Resuelve un href de cinesbabel contra su propio dominio (acepta absoluto,
+// relativo a raíz o relativo a ruta). Devuelve '' si no es de cinesbabel.
+function absCinesbabel(href) {
+  if (!href) return '';
+  try {
+    const u = new URL(href, 'https://cinesbabel.com/');
+    return /(^|\.)cinesbabel\.com$/.test(u.hostname) ? u.href : '';
+  } catch(e) { return ''; }
+}
+
 // ── Parser de ficha individual ──
 // Misma estructura .tabla-sesiones que la cartelera, reutilizamos la misma lógica
 function parsearFicha(html) {
@@ -522,7 +544,7 @@ function parsearFicha(html) {
 
 // Al fusionar, si un día ya existe nos quedamos con la versión que traiga
 // MÁS sesiones: así una tabla recortada nunca pisa a una completa.
-function fusionarDias(pelicula, diasNuevos) {
+function fusionarDias(pelicula, diasNuevos, prefiere = false) {
   const indice = new Map(pelicula.dias.map((d, i) => [d.nombre, i]));
   diasNuevos.forEach(d => {
     if (!indice.has(d.nombre)) {
@@ -530,7 +552,10 @@ function fusionarDias(pelicula, diasNuevos) {
       pelicula.dias.push(d);
     } else {
       const prev = pelicula.dias[indice.get(d.nombre)];
-      if (d.horas.length > prev.horas.length) prev.horas = d.horas;
+      // La ficha individual es la fuente autorizada: gana también en empate.
+      const gana = prefiere ? d.horas.length >= prev.horas.length
+                            : d.horas.length >  prev.horas.length;
+      if (gana) prev.horas = d.horas;
     }
   });
 }
@@ -559,28 +584,54 @@ async function arrancar() {
     console.error('HTML recibido:', html.substring(0, 2000)); return;
   }
 
-  // ── Fetch de fichas individuales en paralelo ──
+  // ── Fetch de fichas individuales ──
+  // NO es un extra: la portada de cinesbabel.com solo publica una ventana de
+  // ~7 días, mientras que el rango por defecto del cartel (viernes → jueves
+  // siguiente) llega hasta 8 días vista. Sin las fichas SIEMPRE faltan los
+  // últimos días. Por eso aquí no se puede fallar en silencio: se reintenta,
+  // se limita la concurrencia para no saturar el Worker, y lo que no se logre
+  // cargar se avisa en pantalla antes de imprimir nada.
+  fallosFicha = [];
   const conFicha = todas.filter(p => p.fichaUrl);
+  todas.forEach(p => { p.fichaOk = !p.fichaUrl; });
   if (conFicha.length) {
     setMsg(`Cargando horarios completos (0 / ${conFicha.length})…`);
     await tick();
     let completadas = 0;
-    await Promise.all(conFicha.map(async pelicula => {
-      try {
-        const url = WORKER + '?url=' + encodeURIComponent(pelicula.fichaUrl);
-        const r = await fetch(url, {signal: AbortSignal.timeout(15000)});
-        if (!r.ok) return;
-        const fichaHtml = await r.text();
-        const diasFicha = parsearFicha(fichaHtml);
-        fusionarDias(pelicula, diasFicha);
-      } catch(e) {
-        console.warn('Error cargando ficha de', pelicula.titulo, e.message);
-      } finally {
+
+    const cargarFicha = async pelicula => {
+      const url = WORKER + '?url=' + encodeURIComponent(pelicula.fichaUrl);
+      let ultimoError = '';
+      for (let intento = 1; intento <= 3; intento++) {
+        try {
+          const r = await fetch(url, {signal: AbortSignal.timeout(20000)});
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          const dias = parsearFicha(await r.text());
+          if (!dias.length) throw new Error('ficha sin tabla de sesiones');
+          fusionarDias(pelicula, dias, true);
+          pelicula.fichaOk = true;
+          return;
+        } catch(e) {
+          ultimoError = e.message || String(e);
+          if (intento < 3) await new Promise(r => setTimeout(r, 400 * intento));
+        }
+      }
+      pelicula.fichaOk = false;
+      fallosFicha.push(pelicula.titulo);
+      console.warn('Ficha no cargada:', pelicula.titulo, '→', ultimoError);
+    };
+
+    // Cola con 4 peticiones simultáneas como máximo
+    const cola = [...conFicha];
+    await Promise.all(Array.from({length: Math.min(4, cola.length)}, async () => {
+      while (cola.length) {
+        await cargarFicha(cola.shift());
         completadas++;
         setMsg(`Cargando horarios completos (${completadas} / ${conFicha.length})…`);
       }
     }));
   }
+  pintarAvisoFichas();
 
   // Fechas únicas ordenadas (ahora con todos los días de fichas incluidos)
   const fs = new Set();
@@ -623,14 +674,16 @@ function parsear(html) {
     const tabla = bloque.querySelector('.tabla-sesiones');
     if (!tabla) return;
     const dias = leerTablaSesiones(tabla);
-    // URL de la ficha individual — enlace "Ver ficha" en pelicula-actions
+    // URL de la ficha individual — enlace "Ver ficha" en pelicula-actions.
+    // Se resuelve SIEMPRE contra cinesbabel.com: si la web sirviera el href
+    // relativo ("/la-bola-negra/"), la propiedad .href lo resolvería contra
+    // GitHub Pages y el fetch de la ficha iría a una URL inexistente.
     let fichaUrl = '';
-    const acciones = bloque.querySelector('.pelicula-actions');
-    if (acciones) {
-      const enlaces = [...acciones.querySelectorAll('a')];
-      const verFicha = enlaces.find(a => a.textContent.trim().toLowerCase().includes('ver ficha'));
-      if (verFicha) fichaUrl = verFicha.href;
-    }
+    const acciones = bloque.querySelector('.pelicula-actions') || bloque;
+    const enlaces = [...acciones.querySelectorAll('a')];
+    let verFicha = enlaces.find(a => a.textContent.trim().toLowerCase().includes('ver ficha'));
+    if (!verFicha) verFicha = enlaces.find(a => /cinesbabel\.com\/[^/]+\/?$/.test(a.getAttribute('href') || ''));
+    if (verFicha) fichaUrl = absCinesbabel(verFicha.getAttribute('href'));
     if (!dias.length) return;
     if (mapa.has(titulo)) {
       const existing = mapa.get(titulo);
@@ -811,6 +864,48 @@ function contarSesiones(p, r) {
   return total;
 }
 
+// Avisa de las películas cuya ficha no se pudo leer: para esas, los horarios
+// son solo los de la ventana corta de la portada y pueden faltar días.
+function pintarAvisoFichas() {
+  const el = document.getElementById('aviso-fichas');
+  if (!el) return;
+  if (!fallosFicha.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const lista = fallosFicha.map(t => '<b>' + t + '</b>').join(', ');
+  el.innerHTML = '<span class="av-t">Horarios posiblemente incompletos</span>' +
+    'No se pudo leer la ficha de ' + lista + '. De esas películas solo tenemos los días ' +
+    'que publica la portada, así que pueden faltar sesiones al final del rango. ' +
+    'Compruébalas en cinesbabel.com antes de imprimir.' +
+    '<button onclick="reintentarFichas()">Reintentar</button>';
+  el.style.display = 'block';
+}
+
+async function reintentarFichas() {
+  const pendientes = todas.filter(p => p.fichaUrl && p.fichaOk === false);
+  if (!pendientes.length) return;
+  const el = document.getElementById('aviso-fichas');
+  el.innerHTML = '<span class="av-t">Reintentando…</span>Cargando fichas pendientes.';
+  fallosFicha = [];
+  for (const pelicula of pendientes) {
+    try {
+      const url = WORKER + '?url=' + encodeURIComponent(pelicula.fichaUrl);
+      const r = await fetch(url, {signal: AbortSignal.timeout(20000)});
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const dias = parsearFicha(await r.text());
+      if (!dias.length) throw new Error('ficha sin tabla de sesiones');
+      fusionarDias(pelicula, dias, true);
+      pelicula.fichaOk = true;
+    } catch(e) {
+      pelicula.fichaOk = false;
+      fallosFicha.push(pelicula.titulo);
+    }
+  }
+  const fs = new Set();
+  todas.forEach(p => p.dias.forEach(d => fs.add(d.nombre)));
+  fechas = [...fs].sort(cmpFecha);
+  pintarAvisoFichas();
+  refGrid();
+}
+
 function refGrid() {
   const r = getRango();
   enRango = todas.filter(p => p.dias.some(d => r.includes(d.nombre)));
@@ -821,11 +916,12 @@ function refGrid() {
     const ns = contarSesiones(p, r);
     return `<label class="plbl">
       <input type="checkbox" ${ch?'checked':''} ${dis?'disabled':''} onchange="onCh(this,'${te}')">
-      <span class="pcard">
+      <span class="pcard${p.fichaOk === false ? ' incompleta' : ''}">
         <img src="${p.poster}" alt="${p.titulo}" loading="lazy">
         <span class="pinfo">
           <span class="pnom">${p.titulo}</span>
           <span class="psess">${ns} sesión${ns !== 1 ? 'es' : ''}</span>
+          ${p.fichaOk === false ? '<span class="pwarn">⚠ horarios incompletos</span>' : ''}
         </span>
       </span>
       <span class="ptick"><svg viewBox="0 0 8 8" fill="none" stroke="white" stroke-width="2"><polyline points="1,4 3,6.5 7,1.5"/></svg></span>
